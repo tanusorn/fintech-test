@@ -1,0 +1,33 @@
+# --- root ---
+node_modules/
+dist/
+build/
+*.log
+.env
+docker-compose.override.yml
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- server ---
+server/node_modules/
+server/dist/
+server/coverage/
+server/.env
+server/.env.*
+!server/.env.example
+server/prisma/*.db
+server/prisma/*.sqlite
+server/prisma/migrations/*.lock
+
+# --- client ---
+client/node_modules/
+client/dist/
+client/coverage/
+client/.env
+client/.env.*
+!client/.env.example
+client/.vite/

@@ -1,0 +1,11 @@
+version: '3.9'
+services:
+  client:
+    build: .
+    ports:
+      - "5173:80"
+    environment:
+    - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+    - VITE_STRIPE_PUBLISHABLE_KEY=${VITE_STRIPE_PUBLISHABLE_KEY}
+    - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+    - VITE_RECAPTCHA_SITE_KEY=${VITE_RECAPTCHA_SITE_KEY}

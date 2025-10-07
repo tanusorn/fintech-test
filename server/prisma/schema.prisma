@@ -1,0 +1,361 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id Int @id @default(autoincrement())
+
+  email        String  @unique
+  passwordHash String?
+  //username → ชื่อที่ใช้แสดงในระบบ (ไม่ซ้ำกัน)
+
+  googleId String? @unique
+
+  role Role @default(USER)
+
+  is2FAEnabled Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  totpSecret   String?
+  demoEnabled  Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallets        Wallet[]
+  demoAccount    DemoAccount?
+  orders         Order[]
+  tradesAsBuyer  Trade[]          @relation("BuyerTrades")
+  tradesAsSeller Trade[]          @relation("SellerTrades")
+  transactions   Transaction[]
+  depositReqs    DepositRequest[]
+  notifications  Notification[]
+  riskLogs       RiskLog[]
+  limits         UserLimits?
+  otpLogs        OtpLog[]
+  auditLogs      AuditLog[]
+  apiKeys        ApiKey[]
+  Payment        Payment[]
+}
+
+// model Account {
+//   id                 Int    @id @default(autoincrement())
+//   user               User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+//   userId             Int
+//   provider           String        // "google" | "github" | "line" ...
+//   providerAccountId  String        // id จากผู้ให้บริการ
+//   accessToken        String?
+//   refreshToken       String?
+//   createdAt          DateTime @default(now())
+
+//   @@unique([provider, providerAccountId])
+//   @@index([userId])
+// }
+
+model Token {
+  id             Int              @id @default(autoincrement())
+  symbol         String           @unique
+  name           String
+  decimals       Int              @default(18)
+  wallets        Wallet[]
+  orders         Order[]
+  trades         Trade[]
+  transactions   Transaction[]
+  depositRequest DepositRequest[]
+  exchangeWallet ExchangeWallet?
+  Payment        Payment[]
+}
+
+model Wallet {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  token     Token    @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  tokenId   Int
+  balance   Decimal  @default(0) @db.Decimal(36, 18)
+  locked    Decimal  @default(0) @db.Decimal(36, 18)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tokenId])
+}
+
+model DemoAccount {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int      @unique
+  maxCredit Decimal  @default(1000) @db.Decimal(36, 18)
+  used      Decimal  @default(0) @db.Decimal(36, 18)
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id        Int         @id @default(autoincrement())
+  user      User        @relation(fields: [userId], references: [id])
+  userId    Int
+  token     Token       @relation(fields: [tokenId], references: [id])
+  tokenId   Int
+  //side → แยกทิศทางการซื้อขาย
+  side      OrderSide
+  //type → แยกวิธีการส่งคำสั่ง
+  type      OrderType
+  //ใช้แทนค่า ตัวเลขทศนิยมความแม่นยำสูง
+  price     Decimal?    @db.Decimal(36, 18)
+  amount    Decimal     @db.Decimal(36, 18)
+  filled    Decimal     @default(0) @db.Decimal(36, 18)
+  status    OrderStatus @default(NEW)
+  createdAt DateTime    @default(now())
+
+  buyTrades  Trade[] @relation("BuyOrder")
+  sellTrades Trade[] @relation("SellOrder")
+
+  //@@index([...]) → คือการสร้าง Index (ดัชนี) บนหลายคอลัมน์ (Composite Index)
+  @@index([tokenId, side, status, price])
+}
+
+model Trade {
+  id      Int   @id @default(autoincrement())
+  token   Token @relation(fields: [tokenId], references: [id])
+  tokenId Int
+
+  buyOrder    Order @relation("BuyOrder", fields: [buyOrderId], references: [id])
+  buyOrderId  Int
+  sellOrder   Order @relation("SellOrder", fields: [sellOrderId], references: [id])
+  sellOrderId Int
+
+  buyer     User     @relation("BuyerTrades", fields: [buyerId], references: [id])
+  buyerId   Int
+  seller    User     @relation("SellerTrades", fields: [sellerId], references: [id])
+  sellerId  Int
+  price     Decimal  @db.Decimal(36, 18)
+  amount    Decimal  @db.Decimal(36, 18)
+  fee       Decimal  @db.Decimal(36, 18)
+  createdAt DateTime @default(now())
+
+  @@index([tokenId, createdAt])
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+model Transaction {
+  id      Int   @id @default(autoincrement())
+  user    User  @relation(fields: [userId], references: [id])
+  userId  Int
+  token   Token @relation(fields: [tokenId], references: [id])
+  tokenId Int
+
+  type   TxType
+  status TxStatus @default(PENDING)
+  amount Decimal  @db.Decimal(36, 18)
+  memo   String?
+
+  provider    String? // e.g., "STRIPE"
+  externalRef String? // e.g., payment_intent id / session id
+  createdAt   DateTime @default(now())
+
+  @@unique([provider, externalRef])
+  @@index([userId, createdAt])
+}
+
+model DepositRequest {
+  id      Int     @id @default(autoincrement())
+  user    User    @relation(fields: [userId], references: [id])
+  userId  Int
+  token   Token   @relation(fields: [tokenId], references: [id])
+  tokenId Int
+  amount  Decimal @db.Decimal(36, 18)
+
+  slipUrl    String
+  status     DepositStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+  approvedAt DateTime?
+  approvedBy Int?
+}
+
+model ExchangeWallet {
+  id      Int   @id @default(autoincrement())
+  token   Token @relation(fields: [tokenId], references: [id])
+  tokenId Int
+
+  balance Decimal @default(0) @db.Decimal(36, 18)
+
+  @@unique([tokenId])
+}
+
+model Notification {
+  id     Int   @id @default(autoincrement())
+  user   User? @relation(fields: [userId], references: [id])
+  userId Int?
+
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model RiskLog {
+  id     Int  @id @default(autoincrement())
+  user   User @relation(fields: [userId], references: [id])
+  userId Int
+
+  action    String
+  severity  RiskSeverity @default(LOW)
+  reason    String
+  meta      Json?
+  createdAt DateTime     @default(now())
+}
+
+model UserLimits {
+  id     Int  @id @default(autoincrement())
+  user   User @relation(fields: [userId], references: [id])
+  userId Int  @unique
+
+  dailyTradeLimit    Decimal  @default(10000) @db.Decimal(36, 18)
+  dailyWithdrawLimit Decimal  @default(5000) @db.Decimal(36, 18)
+  tradedToday        Decimal  @default(0) @db.Decimal(36, 18)
+  withdrawToday      Decimal  @default(0) @db.Decimal(36, 18)
+  lastReset          DateTime @default(now())
+}
+
+model DailyReport {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @unique
+  totalVolume Decimal  @default(0) @db.Decimal(36, 18)
+  totalFee    Decimal  @default(0) @db.Decimal(36, 18)
+  createdAt   DateTime @default(now())
+}
+
+model OtpLog {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  //บอกว่า OTP นี้ถูกสร้างขึ้นมาเพื่อ ใช้ทำอะไร
+  purpose   String
+  //ตัวเลข 6 หลัก หรืออาจเป็น alphanumeric (ถ้าใช้ email OTP)
+  code      String
+  //เวลาที่ OTP หมดอายุ
+  expiresAt DateTime
+  //บอกว่า OTP นี้ถูกใช้ไปแล้วหรือยัง
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+//ใช้เก็บ ร่องรอยกิจกรรม (audit trail) ของระบบ เพื่อสามารถตรวจสอบย้อนหลัง
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    Int?
+  //ชื่อ/ประเภทกิจกรรมที่เกิดขึ้น (optional เพราะบาง log อาจไม่ระบุ)
+  action    String?
+  //เก็บ IP Address ของผู้ใช้/ระบบที่ trigger เหตุการณ์
+  ip        String?
+  //ย่อมาจาก User Agent → บอก browser/device ของผู้ใช้
+  ua        String?
+  //ข้อมูลเสริมแบบ JSON (optional)
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model ApiKey {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  key       String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Payment {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(uuid())
+
+  user                    User    @relation(fields: [userId], references: [id])
+  userId                  Int
+  token                   Token   @relation(fields: [tokenId], references: [id])
+  tokenId                 Int
+  amount                  Decimal @db.Decimal(36, 18)
+  currency                String // เชน ่ thb, usd
+  stripePaymentIntentId   String? @unique
+  stripeCheckoutSessionId String? @unique
+
+  status    PaymentStatus // created | requires_action | succeeded |canceled |  failed
+  method    PaymentMethod? // card, promptpay, ฯลฯ
+  metadata  Json?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+}
+
+enum OrderStatus {
+  NEW
+  PARTIAL
+  FILLED
+  CANCELED
+}
+
+enum TxType {
+  DEPOSIT
+  WITHDRAW
+  TRADE
+  FEE_ADJUST
+}
+
+enum TxStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentStatus {
+  created
+  processing
+  requires_action
+  succeeded
+  failed
+  canceled
+}
+
+enum PaymentMethod {
+  card
+  promptpay
+  bank_transfer
+  other
+}

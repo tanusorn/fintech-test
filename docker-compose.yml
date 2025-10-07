@@ -1,0 +1,113 @@
+version: "3.9"
+name: ${PROJECT_NAME}
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ${PROJECT_NAME}-db
+    env_file: .env
+    environment:
+      TZ: Asia/Bangkok
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # ✅ ง่ายสุด: ไม่ expose พอร์ตออกนอก (กันชน)
+    # ถ้าจะต่อ DBeaver ค่อยเพิ่ม "5433:5432" ทีหลัง
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks: [app-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_NAME}-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks: [app-net]
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_NAME}-backend
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      TZ: ${TZ}
+      PORT: ${PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      BINANCE_BASE: ${BINANCE_BASE}
+      COINGECKO_BASE: ${COINGECKO_BASE}
+      STRIPE_PUBLIC_KEY: ${STRIPE_PUBLIC_KEY}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_CURRENCY: ${STRIPE_CURRENCY}
+    ports:
+      - "${PORT:-8081}:${PORT:-8081}"
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    # ✅ ง่ายสุด: รอ DB/Redis แบบวนลูป และค่อย migrate → รัน dev
+    command: >
+      sh -lc "
+        (npm ci || npm i) &&
+        until nc -z db 5432; do echo 'waiting postgres...'; sleep 2; done &&
+        until nc -z redis 6379; do echo 'waiting redis...'; sleep 2; done &&
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        npm run dev
+      "
+    restart: unless-stopped
+    networks: [app-net]
+
+  # frontend:
+  #   build:
+  #     context: ./client
+  #     dockerfile: Dockerfile
+  #   container_name: ${PROJECT_NAME}-frontend
+  #   env_file: .env
+  #   depends_on:
+  #     - backend
+  #   environment:
+  #     TZ: Asia/Bangkok
+  #     VITE_API_BASE_URL: http://${PROJECT_NAME}-backend:${PORT}
+  #     VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY}
+  #     VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
+  #     VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY}
+  #   ports:
+  #     - "${FRONT_END_PORT:-3000}:80"
+  #   volumes:
+  #     - ./client:/app
+  #     - /app/node_modules
+  #   command: >
+  #     sh -lc "
+  #       (npm ci || npm i) &&
+  #       npm run dev -- --host --port 3000
+  #     "
+  #   restart: unless-stopped
+  #   networks: [app-net]
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_NAME}-frontend
+    ports:
+      - "3000:3000"     # host:container
+    restart: unless-stopped
+    networks: [app-net]
+
+
+volumes:
+  pgdata: {}
+  redis_data: {}
+
+networks:
+  app-net: {}
