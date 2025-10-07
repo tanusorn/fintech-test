@@ -4,13 +4,11 @@
   "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon --watch src --ext ts,json --exec tsx src/server.ts",
     "build": "tsc",
-    "start": "node --experimental-specifier-resolution=node dist/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "seed": "tsx prisma/seed.ts"
+    "start": "node dist/server.js",
+    "dev": "nodemon --watch 'src/**/*.ts' --exec ts-node src/server.ts",
+    "prisma:generate": "npx prisma generate",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
