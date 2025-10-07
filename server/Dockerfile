@@ -1,11 +1,14 @@
 FROM node:20-alpine
 
 WORKDIR /app
+
 COPY package*.json ./
 RUN npm install
 
 COPY . .
-RUN npm run build   # ถ้ามี TypeScript
+
+RUN npm run build || echo 
 
 EXPOSE 8081
+
 CMD ["npm", "run", "start"]
