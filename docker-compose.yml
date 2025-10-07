@@ -11,8 +11,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    # ✅ ง่ายสุด: ไม่ expose พอร์ตออกนอก (กันชน)
-    # ถ้าจะต่อ DBeaver ค่อยเพิ่ม "5433:5432" ทีหลัง
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -55,7 +53,6 @@ services:
     volumes:
       - ./server:/app
       - /app/node_modules
-    # ✅ ง่ายสุด: รอ DB/Redis แบบวนลูป และค่อย migrate → รัน dev
     command: >
       sh -lc "
         (npm ci || npm i) &&
@@ -68,39 +65,13 @@ services:
     restart: unless-stopped
     networks: [app-net]
 
-  # frontend:
-  #   build:
-  #     context: ./client
-  #     dockerfile: Dockerfile
-  #   container_name: ${PROJECT_NAME}-frontend
-  #   env_file: .env
-  #   depends_on:
-  #     - backend
-  #   environment:
-  #     TZ: Asia/Bangkok
-  #     VITE_API_BASE_URL: http://${PROJECT_NAME}-backend:${PORT}
-  #     VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY}
-  #     VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
-  #     VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY}
-  #   ports:
-  #     - "${FRONT_END_PORT:-3000}:80"
-  #   volumes:
-  #     - ./client:/app
-  #     - /app/node_modules
-  #   command: >
-  #     sh -lc "
-  #       (npm ci || npm i) &&
-  #       npm run dev -- --host --port 3000
-  #     "
-  #   restart: unless-stopped
-  #   networks: [app-net]
   frontend:
     build:
       context: ./client
       dockerfile: Dockerfile
     container_name: ${PROJECT_NAME}-frontend
     ports:
-      - "3000:3000"     # host:container
+      - "3000:3000"    
     restart: unless-stopped
     networks: [app-net]
 
